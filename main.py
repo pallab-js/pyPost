@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-pyPost - A fast, intuitive, and extensible open-source API testing tool
-Built with Python 3.10+ and PySide6
+pyPost - API testing tool
 """
 
 import sys

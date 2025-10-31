@@ -293,8 +293,7 @@ class MainWindow(QMainWindow):
         """Show about dialog"""
         QMessageBox.about(
             self, "About pyPost",
-            "pyPost - A fast, intuitive, and extensible API testing tool\n\n"
-            "Built with Python 3.10+ and PySide6\n"
+            "pyPost - API testing tool\n\n"
             "Version 1.0.0"
         )
 

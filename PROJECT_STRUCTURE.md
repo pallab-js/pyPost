@@ -1,7 +1,7 @@
 # Project Structure
 
 ```
-postman/
+pyPost/
 ??? .gitignore              # Git ignore rules
 ??? LICENSE                 # MIT License
 ??? README.md               # Main documentation
