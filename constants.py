@@ -20,3 +20,8 @@ BODY_TYPES = [BODY_NONE, BODY_JSON, BODY_XML, BODY_PLAIN_TEXT, BODY_MULTIPART, B
 
 # Default environment name
 DEFAULT_ENV = 'Default'
+
+# Response handling limits
+MAX_RESPONSE_SIZE_DISPLAY = 1024 * 1024  # 1MB for display
+MAX_RESPONSE_SIZE_LOG = 10 * 1024 * 1024  # 10MB for logging
+RESPONSE_TRUNCATION_MESSAGE = "\n\n[Response truncated due to size. Full response saved to history.]"

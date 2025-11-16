@@ -1,16 +1,20 @@
 import json
 import logging
+import re
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QTabWidget,
     QTreeView, QListWidget, QComboBox, QPushButton, QLabel, QInputDialog,
-    QMessageBox, QListWidgetItem, QDialog
+    QMessageBox, QListWidgetItem, QDialog, QLineEdit
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QShortcut, QKeySequence, QPalette, QColor
+from typing import List, Dict, Any
 
 from database import DatabaseManager
 from request_tab import RequestTab
 from environments_dialog import EnvironmentsDialog
+from comparison_dialog import ComparisonDialog
+from templates_dialog import TemplatesDialog
 
 
 class MainWindow(QMainWindow):
@@ -21,6 +25,20 @@ class MainWindow(QMainWindow):
         self.db_manager = DatabaseManager()
         self.init_ui()
         self.load_data()
+
+    def validate_collection_name(self, name: str) -> bool:
+        """Validate collection name for saving requests"""
+        """Validate collection name"""
+        if not name or not name.strip():
+            QMessageBox.warning(self, "Invalid Name", "Collection name cannot be empty")
+            return False
+        if len(name.strip()) > 100:
+            QMessageBox.warning(self, "Invalid Name", "Collection name too long (max 100 characters)")
+            return False
+        if not re.match(r'^[a-zA-Z0-9_\-\s\(\)\[\]]+$', name.strip()):
+            QMessageBox.warning(self, "Invalid Name", "Collection name can only contain letters, numbers, spaces, hyphens, underscores, parentheses, and brackets")
+            return False
+        return True
 
     def init_ui(self):
         self.setWindowTitle("pyPost - API Testing Tool")
@@ -72,8 +90,20 @@ class MainWindow(QMainWindow):
         self.sidebar_tabs.addTab(self.collections_tree, "Collections")
 
         # History tab
+        history_widget = QWidget()
+        history_layout = QVBoxLayout()
+
+        # Search box for history
+        self.history_search = QLineEdit()
+        self.history_search.setPlaceholderText("Search history...")
+        self.history_search.textChanged.connect(self.filter_history)
+        history_layout.addWidget(self.history_search)
+
         self.history_list = QListWidget()
-        self.sidebar_tabs.addTab(self.history_list, "History")
+        history_layout.addWidget(self.history_list)
+
+        history_widget.setLayout(history_layout)
+        self.sidebar_tabs.addTab(history_widget, "History")
 
         layout.addWidget(self.sidebar_tabs)
         sidebar.setLayout(layout)
@@ -138,12 +168,33 @@ class MainWindow(QMainWindow):
         export_action = file_menu.addAction("Export Collections")
         export_action.triggered.connect(self.export_collections)
 
+        file_menu.addSeparator()
+
+        close_tab_action = file_menu.addAction("Close Tab")
+        close_tab_action.setShortcut(QKeySequence("Ctrl+W"))
+        close_tab_action.triggered.connect(self.close_current_tab)
+
         # View menu
         view_menu = menubar.addMenu("View")
 
         self.dark_mode_action = view_menu.addAction("Dark Mode")
         self.dark_mode_action.setCheckable(True)
         self.dark_mode_action.triggered.connect(self.toggle_dark_mode)
+
+        # Tools menu
+        tools_menu = menubar.addMenu("Tools")
+
+        compare_action = tools_menu.addAction("Compare Requests/Responses")
+        compare_action.setShortcut(QKeySequence("Ctrl+Shift+C"))
+        compare_action.triggered.connect(self.show_comparison_dialog)
+
+        templates_action = tools_menu.addAction("Request Templates")
+        templates_action.setShortcut(QKeySequence("Ctrl+T"))
+        templates_action.triggered.connect(self.show_templates_dialog)
+
+        sign_request_action = tools_menu.addAction("Sign Request")
+        sign_request_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
+        sign_request_action.triggered.connect(self.sign_current_request)
 
         # Help menu
         help_menu = menubar.addMenu("Help")
@@ -192,12 +243,17 @@ class MainWindow(QMainWindow):
         # Connect double-click to load request
         self.collections_tree.doubleClicked.connect(self.load_request_from_collection)
 
-    def load_history(self):
-        """Load history into list widget"""
+    def load_history(self) -> None:
+        """Load request history into list widget"""
         history = self.db_manager.execute_query(
             "SELECT * FROM history ORDER BY created_at DESC LIMIT 100"
         )
 
+        self.all_history = history  # Store all history for filtering
+        self.display_history(history)
+
+    def display_history(self, history):
+        """Display history entries in the list widget"""
         self.history_list.clear()
         for entry in history:
             status_code = entry.get('status_code', '-')
@@ -211,9 +267,27 @@ class MainWindow(QMainWindow):
             item.setData(Qt.UserRole, entry['id'])
             item.setData(Qt.UserRole + 1, entry)  # Store full entry data
             self.history_list.addItem(item)
-        
+
         # Connect double-click to load request
         self.history_list.doubleClicked.connect(self.load_request_from_history)
+
+    def filter_history(self, search_text: str) -> None:
+        """Filter history entries based on search text"""
+        if not search_text.strip():
+            self.display_history(self.all_history)
+            return
+
+        search_lower = search_text.lower()
+        filtered_history = []
+
+        for entry in self.all_history:
+            # Search in URL, method, and status code
+            if (search_lower in entry['url'].lower() or
+                search_lower in entry['method'].lower() or
+                search_lower in str(entry.get('status_code', '')).lower()):
+                filtered_history.append(entry)
+
+        self.display_history(filtered_history)
 
     def add_request_tab(self):
         """Add new request tab"""
@@ -228,6 +302,11 @@ class MainWindow(QMainWindow):
             self.request_tabs.removeTab(index)
         else:
             QMessageBox.information(self, "Info", "At least one request tab must remain open")
+
+    def close_current_tab(self):
+        """Close the currently active tab"""
+        current_index = self.request_tabs.currentIndex()
+        self.close_request_tab(current_index)
 
     def manage_environments(self):
         """Open environments management dialog"""
@@ -279,6 +358,8 @@ class MainWindow(QMainWindow):
         # Show save dialog
         name, ok = QInputDialog.getText(self, "Save Request", "Request name:")
         if ok and name.strip():
+            if not self.validate_collection_name(name):
+                return
             try:
                 self.db_manager.execute_update(
                     "INSERT INTO collections (name, request_data, is_folder) VALUES (?, ?, 0)",
@@ -296,6 +377,38 @@ class MainWindow(QMainWindow):
             "pyPost - API testing tool\n\n"
             "Version 1.0.0"
         )
+
+    def show_comparison_dialog(self):
+        """Show comparison dialog"""
+        dialog = ComparisonDialog(self)
+        dialog.exec()
+
+    def show_templates_dialog(self):
+        """Show templates dialog"""
+        dialog = TemplatesDialog(self.db_manager, self)
+        dialog.exec()
+
+    def sign_current_request(self):
+        """Sign the current request with HMAC-SHA256"""
+        current_tab = self.request_tabs.currentWidget()
+        if not isinstance(current_tab, RequestTab):
+            QMessageBox.warning(self, "Error", "No active request tab")
+            return
+
+        # Get secret key from user
+        secret_key, ok = QInputDialog.getText(
+            self, "Sign Request",
+            "Enter secret key for HMAC-SHA256 signing:",
+            QLineEdit.Password
+        )
+
+        if ok and secret_key.strip():
+            try:
+                signature = current_tab.sign_request(secret_key.strip())
+                current_tab.add_signature_header(signature)
+                QMessageBox.information(self, "Success", "Request signed successfully")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to sign request: {str(e)}")
 
     def import_collections(self):
         """Import collections from JSON file"""

@@ -1,9 +1,12 @@
 import json
 import logging
-from typing import Dict, Optional
+import hmac
+import hashlib
+import base64
+from typing import Dict, Optional, Union
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QTableWidget, QTableWidgetItem,
-    QLineEdit, QPushButton, QTextEdit, QLabel, QGroupBox, QMessageBox, QComboBox, QCheckBox
+    QLineEdit, QPushButton, QTextEdit, QLabel, QGroupBox, QMessageBox, QComboBox, QCheckBox, QProgressBar
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QShortcut, QKeySequence
@@ -54,6 +57,11 @@ class RequestTab(QWidget):
         # SSL verification checkbox
         self.ssl_verify_checkbox = QCheckBox("Verify SSL")
         self.ssl_verify_checkbox.setChecked(True)
+
+        # Progress bar (initially hidden)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)  # Indeterminate progress
+        self.progress_bar.hide()
 
         # Request Details Tabs
         self.request_tabs = QTabWidget()
@@ -210,6 +218,7 @@ class RequestTab(QWidget):
 
         layout.addLayout(url_layout)
         layout.addWidget(self.ssl_verify_checkbox)
+        layout.addWidget(self.progress_bar)
         layout.addWidget(self.request_tabs)
         layout.addWidget(response_group)
         self.setLayout(layout)
@@ -284,7 +293,7 @@ class RequestTab(QWidget):
             parsed = urllib.parse.urlparse(url)
             if not parsed.scheme or not parsed.netloc:
                 raise ValueError("Invalid URL")
-        except:
+        except ValueError:
             QMessageBox.warning(self, "Error", "Please enter a valid URL")
             return
 
@@ -325,8 +334,9 @@ class RequestTab(QWidget):
         if self.current_environment:
             url, headers, params, data = self.apply_substitutions(url, headers, params, data)
 
-        # Start HTTP worker
-        self.http_worker = HTTPWorker(method, url, headers, data, params, self.ssl_verify_checkbox.isChecked(), files)
+        # Start HTTP worker with caching enabled for GET requests
+        use_cache = method.upper() == 'GET'
+        self.http_worker = HTTPWorker(method, url, headers, data, params, self.ssl_verify_checkbox.isChecked(), files, self.db_manager, use_cache)
         self.http_worker.finished.connect(self.handle_response)
         self.http_worker.error.connect(self.handle_error)
         self.http_worker.start()
@@ -336,6 +346,7 @@ class RequestTab(QWidget):
         self.send_button.setEnabled(False)
         self.cancel_button.show()
         self.cancel_button.setEnabled(True)
+        self.progress_bar.show()
 
     def get_headers(self) -> Dict[str, str]:
         """Extract headers from headers table"""
@@ -413,6 +424,7 @@ class RequestTab(QWidget):
         self.send_button.setEnabled(True)
         self.cancel_button.hide()
         self.cancel_button.setEnabled(False)
+        self.progress_bar.hide()
 
         # Format response size
         size = result.get('size', 0)
@@ -459,6 +471,19 @@ class RequestTab(QWidget):
             self.response_cookies_table.setItem(i, 0, QTableWidgetItem(str(key)))
             self.response_cookies_table.setItem(i, 1, QTableWidgetItem(str(value)))
 
+        # Cache successful GET responses
+        if self.method_selector.currentText().upper() == 'GET' and 200 <= status_code < 300:
+            try:
+                cache_key = self.db_manager.get_cache_key(
+                    self.method_selector.currentText(),
+                    self.url_input.text(),
+                    self.get_headers(),
+                    self.get_body_data()
+                )
+                self.db_manager.cache_response(cache_key, result)
+            except Exception as e:
+                logging.warning(f"Failed to cache response: {e}")
+
         # Log to history
         self.log_to_history(result)
 
@@ -468,6 +493,7 @@ class RequestTab(QWidget):
         self.send_button.setEnabled(True)
         self.cancel_button.hide()
         self.cancel_button.setEnabled(False)
+        self.progress_bar.hide()
 
         self.status_label.setText('<span style="color: red;">Status: Error</span>')
         self.time_label.setText("Time: -")
@@ -496,10 +522,11 @@ class RequestTab(QWidget):
         self.send_button.setEnabled(True)
         self.cancel_button.hide()
         self.cancel_button.setEnabled(False)
-        
+        self.progress_bar.hide()
+
         self.status_label.setText('<span style="color: orange;">Status: Cancelled</span>')
     
-    def format_size(self, size_bytes: int) -> str:
+    def format_size(self, size_bytes: Union[int, float]) -> str:
         """Format size in human-readable format"""
         for unit in ['B', 'KB', 'MB', 'GB']:
             if size_bytes < 1024.0:
@@ -703,6 +730,44 @@ class RequestTab(QWidget):
             key = os.path.basename(file_path)
             self.multipart_table.setItem(row, 0, QTableWidgetItem(key))
             self.multipart_table.setItem(row, 1, QTableWidgetItem(file_path))
+
+    def sign_request(self, secret_key: str, algorithm: str = 'hmac-sha256') -> str:
+        """Generate HMAC signature for the request"""
+        method = self.method_selector.currentText()
+        url = self.url_input.text()
+        body = self.get_body_data() or ''
+
+        # Create message to sign
+        message = f"{method.upper()}{url}{body}"
+
+        if algorithm == 'hmac-sha256':
+            signature = hmac.new(
+                secret_key.encode(),
+                message.encode(),
+                hashlib.sha256
+            ).digest()
+            return base64.b64encode(signature).decode()
+        else:
+            raise ValueError(f"Unsupported signing algorithm: {algorithm}")
+
+    def add_signature_header(self, signature: str, algorithm: str = 'hmac-sha256'):
+        """Add signature header to the request"""
+        # Find or create Authorization header row
+        auth_header_found = False
+        for row in range(self.headers_table.rowCount()):
+            key_item = self.headers_table.item(row, 0)
+            if key_item and key_item.text().lower() == 'authorization':
+                # Update existing Authorization header
+                self.headers_table.item(row, 1).setText(f"Signature {signature}")
+                auth_header_found = True
+                break
+
+        if not auth_header_found:
+            # Add new Authorization header
+            row = self.headers_table.rowCount()
+            self.headers_table.insertRow(row)
+            self.headers_table.setItem(row, 0, QTableWidgetItem('Authorization'))
+            self.headers_table.setItem(row, 1, QTableWidgetItem(f"Signature {signature}"))
 
     def remove_multipart_row(self):
         """Remove selected row from multipart table"""

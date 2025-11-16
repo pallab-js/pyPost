@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from database import DatabaseManager
+import re
 
 
 class EnvironmentsDialog(QDialog):
@@ -16,6 +17,32 @@ class EnvironmentsDialog(QDialog):
         self.db_manager = db_manager
         self.init_ui()
         self.load_environments()
+
+    def validate_environment_name(self, name: str) -> bool:
+        """Validate environment name"""
+        if not name or not name.strip():
+            QMessageBox.warning(self, "Invalid Name", "Environment name cannot be empty")
+            return False
+        if len(name.strip()) > 50:
+            QMessageBox.warning(self, "Invalid Name", "Environment name too long (max 50 characters)")
+            return False
+        if not re.match(r'^[a-zA-Z0-9_\-\s]+$', name.strip()):
+            QMessageBox.warning(self, "Invalid Name", "Environment name can only contain letters, numbers, spaces, hyphens, and underscores")
+            return False
+        return True
+
+    def validate_variable_name(self, name: str) -> bool:
+        """Validate environment variable name"""
+        if not name or not name.strip():
+            QMessageBox.warning(self, "Invalid Name", "Variable name cannot be empty")
+            return False
+        if len(name.strip()) > 100:
+            QMessageBox.warning(self, "Invalid Name", "Variable name too long (max 100 characters)")
+            return False
+        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name.strip()):
+            QMessageBox.warning(self, "Invalid Name", "Variable name must start with a letter or underscore and contain only letters, numbers, and underscores")
+            return False
+        return True
 
     def init_ui(self):
         self.setWindowTitle("Manage Environments")
@@ -95,6 +122,8 @@ class EnvironmentsDialog(QDialog):
         """Add new environment"""
         name, ok = QInputDialog.getText(self, "New Environment", "Environment name:")
         if ok and name.strip():
+            if not self.validate_environment_name(name):
+                return
             try:
                 self.db_manager.execute_update(
                     "INSERT INTO environments (name) VALUES (?)",
@@ -117,6 +146,8 @@ class EnvironmentsDialog(QDialog):
         )
 
         if reply == QMessageBox.Yes:
+            # Delete environment variables first
+            self.db_manager.execute_update("DELETE FROM environment_variables WHERE environment_id = ?", (env_id,))
             self.db_manager.execute_update("DELETE FROM environments WHERE id = ?", (env_id,))
             self.load_environments()
 
@@ -129,13 +160,18 @@ class EnvironmentsDialog(QDialog):
 
         name, ok = QInputDialog.getText(self, "New Variable", "Variable name:")
         if ok and name.strip():
+            if not self.validate_variable_name(name):
+                return
             value, ok = QInputDialog.getText(self, "New Variable", "Variable value:")
             if ok:
-                self.db_manager.execute_update(
-                    "INSERT INTO environment_variables (environment_id, name, value) VALUES (?, ?, ?)",
-                    (env_id, name.strip(), value)
-                )
-                self.load_variables()
+                try:
+                    self.db_manager.execute_update(
+                        "INSERT INTO environment_variables (environment_id, name, value) VALUES (?, ?, ?)",
+                        (env_id, name.strip(), value)
+                    )
+                    self.load_variables()
+                except sqlite3.IntegrityError:
+                    QMessageBox.warning(self, "Error", "Variable name already exists in this environment")
 
     def delete_variable(self):
         """Delete selected variable"""

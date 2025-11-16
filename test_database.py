@@ -22,7 +22,7 @@ def test_init_database(db_manager):
     # Check if tables exist
     result = db_manager.execute_query("SELECT name FROM sqlite_master WHERE type='table'")
     table_names = [row['name'] for row in result]
-    expected_tables = ['collections', 'history', 'environments', 'environment_variables']
+    expected_tables = ['collections', 'history', 'environments', 'environment_variables', 'settings']
     for table in expected_tables:
         assert table in table_names
 
