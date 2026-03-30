@@ -1,98 +1,141 @@
-# pyPost - API Testing Tool
+# pyPost - Professional API Testing Workstation
 
-A fast, intuitive, and extensible open-source API testing tool for developers, built with Python and PySide6. It's a local-first, high-performance alternative to tools like Postman.
+A fast, intuitive, and extensible open-source API testing tool for developers, built with Python and PySide6. It's a local-first, high-performance alternative to tools like Postman, Swagger, Hoppscotch, and Apidog.
 
 ## Features
 
-- **Request Composer**: Build HTTP requests with support for all major methods (GET, POST, PUT, PATCH, DELETE, etc.)
-- **Response Viewer**: View responses with syntax highlighting, headers, and timing information
-  - Automatic JSON/XML pretty-printing
-  - Color-coded status codes (green/orange/red)
-  - Human-readable file sizes (KB, MB, GB)
-- **File Uploads**: Full support for multipart file uploads
-- **Request Cancellation**: Cancel ongoing requests with dedicated cancel button
-- **Collections**: Organize requests in hierarchical collections
-- **History**: Track all your requests with automatic logging
-  - Double-click to reload previous requests
-- **Environments**: Use variables in requests for different environments
-- **Authentication**: Support for Bearer Token and Basic Auth (encrypted storage)
-- **SSL Verification**: Toggle SSL certificate verification for testing
-- **Dark Mode**: Persistent dark mode preference
-- **Local-First**: All data stored locally in SQLite database
-- **Testing**: Comprehensive unit tests with pytest
+### Core Features
+- **Multi-Protocol Support**: HTTP, HTTPS, GraphQL, WebSocket
+- **Request Composer**: Build requests with all HTTP methods (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS)
+- **Response Viewer**: Syntax highlighting, JSON/XML pretty-printing, headers, timing
+- **Collections**: Hierarchical organization of requests
+- **History**: Automatic logging with double-click to reload
+- **Environments**: Variable substitution with `{{variable}}` syntax
+- **Authentication**: Bearer Token, Basic Auth, HMAC signing (encrypted storage)
+- **SSL Verification**: Toggle for testing self-signed certificates
+- **Dark Mode**: Persistent theme preference
+- **Local-First**: All data stored in SQLite
+
+### Professional Features
+- **Assertion Engine**: Status code, JSONPath, Header, ResponseTime, BodyContains assertions
+- **Request Chaining**: Extract values from responses to use in subsequent requests
+- **Mock Server**: Flask-based local server with static responses and delay simulation
+- **Collection Runner**: Sequential execution with reports (JSON, HTML, Markdown)
+- **Code Generator**: cURL, Python, JavaScript, Java, PHP, Go
+- **OpenAPI Support**: Import/export OpenAPI 3.x specifications
+
+### Advanced Features
+- **Security Scanner**: SQL injection, XSS, sensitive data exposure, missing headers, CORS
+- **Plugin System**: Extensible architecture with pre/post request hooks
+- **Git Integration**: Version control for collections
+- **CLI Runner**: Headless execution for CI/CD
+- **Test Data Generator**: 30+ data types with template syntax
+- **Structured Logging**: SQLite-persisted request logs
+- **Audit Logging**: Full activity tracking for compliance
 
 ## Installation
 
-1. Install Python 3.10 or higher
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Run the application:
-   ```bash
-   python main.py
-   ```
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/pyPost.git
+cd pyPost
 
-## Usage
+# Create virtual environment (recommended)
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# or: venv\Scripts\activate  # Windows
 
-1. **Creating Requests**: Use the URL bar to enter your endpoint and select the HTTP method
-2. **Adding Parameters**: Use the Params tab to add query parameters (use Add/Remove Row buttons)
-3. **Setting Headers**: Use the Headers tab to add custom headers (use Add/Remove Row buttons)
-4. **Authentication**: Use the Authorization tab for Bearer token or Basic Auth
-5. **SSL Verification**: Check/uncheck "Verify SSL" for certificate validation
-6. **Request Body**: Use the Body tab for POST/PUT requests with JSON, XML, plain text, or multipart form-data
-7. **File Uploads**: Select "Multipart Form-Data" in Body tab, then add files using "Add File" button
-8. **Cancelling Requests**: Click "Cancel" button (appears during request) to stop ongoing requests
-9. **Saving Requests**: Use File > Save Request to save requests to collections
-10. **Reloading History**: Double-click any history entry to reload that request
-11. **Managing Environments**: Click "Manage Environments" to create environment variables
-12. **Dark Mode**: Toggle in View menu - preference is saved automatically
-13. **Import/Export Collections**: Use File > Import/Export Collections for backup/sharing
-14. **Running Tests**: Run `pytest` to execute unit tests
+# Install dependencies
+pip install -r requirements.txt
 
-## Environment Variables
+# Run the application
+python main.py
+```
 
-Use the format `{{variable_name}}` in your requests to substitute environment variables. For example:
-- URL: `https://api.example.com/{{version}}/users`
-- Header: `Authorization: Bearer {{api_token}}`
+## Quick Start
+
+1. **Create a Request**: Enter URL, select method, add headers/body
+2. **Send**: Click Send or press Ctrl+Enter
+3. **Save**: File > Save Request to store in collections
+4. **Run Tests**: Tools > Security Scanner for vulnerability checks
+
+## CLI Usage
+
+```bash
+# Run a collection
+python cli/main.py run collection.json --env staging
+
+# Security scan
+python cli/main.py security-scan https://api.example.com -o report.json
+
+# Generate test data
+python cli/main.py generate-data --template '{"name": "{{full_name}}", "email": "{{email}}"}' --count 10
+
+# Mock server
+python cli/main.py mock-server --port 5000
+
+# View audit logs
+python cli/main.py audit-logs --days 30
+```
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+N | New Request |
+| Ctrl+S | Save Request |
+| Ctrl+Enter | Send Request |
+| Ctrl+W | Close Tab |
+| Ctrl+T | Request Templates |
+| Ctrl+Shift+C | Compare Requests |
+| Ctrl+Shift+E | Security Scanner |
+| Ctrl+Shift+D | Data Generator |
 
 ## Architecture
 
-pyPost consists of the following components:
+```
+pyPost/
+├── core/           # Core runtime (GraphQL, WebSocket, Assertions, Chaining)
+├── engine/          # Engine (Mock Server, Runner, Code Generator)
+├── adapters/       # Import/Export (OpenAPI)
+├── integrations/    # Git integration
+├── plugins/        # Plugin system
+├── security/        # Security scanner
+├── utils/          # Utilities (Data Generator)
+├── cli/            # CLI interface
+└── tests/          # Unit tests (279 tests)
+```
 
-- **Main Window**: The primary GUI, managing tabs, collections, and history.
-- **Request Tab**: Individual tabs for composing and sending HTTP requests.
-- **Database Manager**: Handles SQLite database operations for persistence.
-- **HTTP Worker**: Threaded worker for sending requests asynchronously.
-- **Environments Dialog**: Manages environment variables.
-- **Syntax Highlighter**: Provides syntax highlighting for responses.
+## Testing
 
-## Security
+```bash
+# Run all tests
+python -m pytest
 
-- Sensitive data (Bearer tokens, Basic Auth credentials) are encrypted using Fernet symmetric encryption.
-- Encryption key is generated on first run and stored locally in `.encryption_key`.
-- SSL verification is enabled by default; disable only for testing.
-- Input validation prevents malformed URLs and JSON bodies.
-- No data is sent to external servers; all data remains local.
-- **Warning**: Deleting `.encryption_key` will require re-entering credentials, as existing encrypted data cannot be decrypted.
+# Run specific test file
+python -m pytest test_security.py -v
 
-## Troubleshooting
+# Run with coverage
+python -m pytest --cov=. --cov-report=term-missing
 
-- **App won't start**: Ensure Python 3.10+ and dependencies are installed. Run `pip install -r requirements.txt`.
-- **Requests fail**: Check URL format, SSL settings, and network connectivity. View logs in console.
-- **Encryption errors**: If `.encryption_key` is corrupted, delete it to regenerate (note: existing encrypted data will be lost).
-- **Syntax highlighting not working**: Install Pygments: `pip install pygments`.
-- **UI issues**: Ensure PySide6 is properly installed and compatible with your system.
+# Skip GUI tests (headless environments)
+python -m pytest --ignore=test_main_window.py
+```
 
 ## Requirements
 
-- Python 3.10+
-- PySide6
-- requests
-- pygments (optional, for syntax highlighting)
-- pytest (for testing)
-- cryptography (for security features)
+- Python 3.9+
+- PySide6 6.5+ (GUI)
+- requests 2.28+
+- cryptography 41.0+ (security)
+- pytest 7.0+ (testing)
+- flask 2.0+ (mock server)
+- websockets 10.0+ (WebSocket client)
 
 ## License
 
-This project is open source and available under the MIT License.
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

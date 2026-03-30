@@ -7,8 +7,12 @@ name = "pypost"
 version = "1.0.0"
 description = "A fast, intuitive, and extensible open-source API testing tool"
 readme = "README.md"
-license = {file = "LICENSE"}
+license = {text = "MIT"}
 requires-python = ">=3.9"
+authors = [
+    {name = "pyPost Team"}
+]
+keywords = ["api", "testing", "http", "rest", "graphql", "websocket", "postman", "alternative"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -27,12 +31,17 @@ dependencies = [
     "requests>=2.28.0",
     "cryptography>=41.0.0",
     "pygments>=2.13.0",
+    "websockets>=10.0",
+    "flask>=2.0.0",
+    "faker>=19.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov",
+    "pytest-mock",
+    "pytest-qt",
     "black",
     "isort",
     "flake8",
@@ -41,8 +50,9 @@ dev = [
 [project.scripts]
 pypost = "main:main"
 
-[tool.setuptools]
-packages = ["."]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "engine*", "adapters*", "integrations*", "plugins*", "security*", "utils*", "cli*"]
 
 [tool.black]
 line-length = 100
@@ -57,3 +67,4 @@ testpaths = ["test_*.py"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
+addopts = "-v --tb=short"

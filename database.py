@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import json
 import logging
 import hashlib
 import time
@@ -118,6 +119,27 @@ class DatabaseManager:
             CREATE INDEX IF NOT EXISTS idx_cache_key ON response_cache(cache_key)
         """)
 
+        # Create indexes for history queries
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_history_method ON history(method)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_history_created ON history(created_at DESC)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_history_url ON history(url)
+        """)
+
+        # Create indexes for collections
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_collections_parent ON collections(parent_id)
+        """)
+
+        # Create indexes for environment variables
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_env_vars_env_id ON environment_variables(environment_id)
+        """)
+
         # Create default environment
         cursor.execute("SELECT COUNT(*) FROM environments")
         if cursor.fetchone()[0] == 0:
@@ -212,7 +234,7 @@ class DatabaseManager:
             if row:
                 return {
                     'status_code': row['status_code'],
-                    'headers': row['headers'] if row['headers'] else '{}',
+                    'headers': json.loads(row['headers']) if row['headers'] else {},
                     'response_data': row['response_data'],
                     'cached': True
                 }

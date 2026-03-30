@@ -149,6 +149,28 @@ class RequestTab(QWidget):
         self.body_input = QTextEdit()
         self.body_input.setPlaceholderText("Enter request body")
 
+        # GraphQL split view
+        self.graphql_widget = QWidget()
+        graphql_layout = QVBoxLayout()
+        graphql_split = QHBoxLayout()
+        
+        graphql_query_layout = QVBoxLayout()
+        graphql_query_layout.addWidget(QLabel("Query:"))
+        self.graphql_query_input = QTextEdit()
+        self.graphql_query_input.setPlaceholderText("query {\n  users {\n    id\n    name\n  }\n}")
+        graphql_query_layout.addWidget(self.graphql_query_input)
+        graphql_split.addLayout(graphql_query_layout)
+        
+        graphql_vars_layout = QVBoxLayout()
+        graphql_vars_layout.addWidget(QLabel("Variables (JSON):"))
+        self.graphql_variables_input = QTextEdit()
+        self.graphql_variables_input.setPlaceholderText('{"id": 1}')
+        graphql_vars_layout.addWidget(self.graphql_variables_input)
+        graphql_split.addLayout(graphql_vars_layout)
+        
+        self.graphql_widget.setLayout(graphql_split)
+        self.graphql_widget.hide()
+
         # Multipart table
         self.multipart_table = QTableWidget()
         self.multipart_table.setColumnCount(2)
@@ -169,6 +191,7 @@ class RequestTab(QWidget):
         body_layout.addWidget(self.body_type)
         body_layout.addWidget(QLabel("Body:"))
         body_layout.addWidget(self.body_input)
+        body_layout.addWidget(self.graphql_widget)
         body_layout.addWidget(self.multipart_table)
         body_layout.addLayout(multipart_btn_layout)
         body_widget.setLayout(body_layout)
@@ -272,9 +295,15 @@ class RequestTab(QWidget):
         """Update body UI based on selected type"""
         if body_type == BODY_MULTIPART:
             self.body_input.hide()
+            self.graphql_widget.hide()
             self.multipart_table.show()
+        elif body_type == BODY_GRAPHQL:
+            self.body_input.hide()
+            self.multipart_table.hide()
+            self.graphql_widget.show()
         else:
             self.body_input.show()
+            self.graphql_widget.hide()
             self.multipart_table.hide()
 
     def send_request(self):
@@ -287,7 +316,6 @@ class RequestTab(QWidget):
             QMessageBox.warning(self, "Error", "Please enter a URL")
             return
 
-        # Validate URL structure
         try:
             import urllib.parse
             parsed = urllib.parse.urlparse(url)
@@ -297,9 +325,9 @@ class RequestTab(QWidget):
             QMessageBox.warning(self, "Error", "Please enter a valid URL")
             return
 
-        # Validate JSON body if applicable
         body_type = self.body_type.currentText()
-        if body_type == "JSON":
+        
+        if body_type == BODY_JSON:
             body_text = self.body_input.toPlainText().strip()
             if body_text:
                 try:
@@ -308,13 +336,25 @@ class RequestTab(QWidget):
                 except json.JSONDecodeError:
                     QMessageBox.warning(self, "Error", "Invalid JSON in request body")
                     return
+        elif body_type == BODY_GRAPHQL:
+            from core.graphql_client import GraphQLClient
+            query = self.graphql_query_input.toPlainText().strip()
+            variables_text = self.graphql_variables_input.toPlainText().strip()
+            
+            valid, error = GraphQLClient.validate_query(query)
+            if not valid:
+                QMessageBox.warning(self, "GraphQL Error", error)
+                return
+            
+            valid, variables, error = GraphQLClient.validate_variables(variables_text)
+            if not valid:
+                QMessageBox.warning(self, "GraphQL Error", error)
+                return
 
-        # Validate files if multipart
         files = None
-        if self.body_type.currentText() == BODY_MULTIPART:
+        if body_type == BODY_MULTIPART:
             files = self.get_files()
             if files:
-                # Validate that all files exist
                 import os
                 for key, file_path in files.items():
                     if not os.path.exists(file_path):
@@ -324,17 +364,24 @@ class RequestTab(QWidget):
                         QMessageBox.warning(self, "File Error", f"Path is not a file: {file_path}")
                         return
 
-        # Prepare request data
         method = self.method_selector.currentText()
         headers = self.get_headers()
         params = self.get_params()
         data = self.get_body_data()
 
-        # Apply environment variable substitutions
+        if body_type == BODY_GRAPHQL:
+            headers['Content-Type'] = 'application/json'
+            from core.graphql_client import GraphQLRequest
+            graphql_req = GraphQLRequest(
+                query=self.graphql_query_input.toPlainText(),
+                variables=json.loads(self.graphql_variables_input.toPlainText()) if self.graphql_variables_input.toPlainText().strip() else None
+            )
+            from core.graphql_client import GraphQLClient
+            data = json.dumps(GraphQLClient.build_request_body(graphql_req))
+
         if self.current_environment:
             url, headers, params, data = self.apply_substitutions(url, headers, params, data)
 
-        # Start HTTP worker with caching enabled for GET requests
         use_cache = method.upper() == 'GET'
         self.http_worker = HTTPWorker(method, url, headers, data, params, self.ssl_verify_checkbox.isChecked(), files, self.db_manager, use_cache)
         self.http_worker.finished.connect(self.handle_response)
@@ -385,8 +432,9 @@ class RequestTab(QWidget):
         if body_type == BODY_NONE:
             return None
         elif body_type == BODY_MULTIPART:
-            # For multipart, return dict of files, but since requests expects files, handle in send_request
             return None
+        elif body_type == BODY_GRAPHQL:
+            return None  # Handled in send_request
 
         body_text = self.body_input.toPlainText()
         if not body_text.strip():
@@ -606,7 +654,7 @@ class RequestTab(QWidget):
         if basic_password:
             basic_password = self.db_manager.encrypt(basic_password)
 
-        return {
+        data = {
             'method': self.method_selector.currentText(),
             'url': self.url_input.text(),
             'headers': self.get_headers(),
@@ -618,27 +666,30 @@ class RequestTab(QWidget):
             'basic_password': basic_password,
             'body_type': self.body_type.currentText()
         }
+        
+        if self.body_type.currentText() == BODY_GRAPHQL:
+            data['graphql_query'] = self.graphql_query_input.toPlainText()
+            data['graphql_variables'] = self.graphql_variables_input.toPlainText()
+        
+        return data
 
     def load_request_data(self, request_data: Dict):
         """Load request data from dictionary"""
         self.method_selector.setCurrentText(request_data.get('method', 'GET'))
         self.url_input.setText(request_data.get('url', ''))
 
-        # Load headers
         headers = request_data.get('headers', {})
         self.headers_table.setRowCount(len(headers))
         for i, (key, value) in enumerate(headers.items()):
             self.headers_table.setItem(i, 0, QTableWidgetItem(key))
             self.headers_table.setItem(i, 1, QTableWidgetItem(value))
 
-        # Load params
         params = request_data.get('params', {})
         self.params_table.setRowCount(len(params))
         for i, (key, value) in enumerate(params.items()):
             self.params_table.setItem(i, 0, QTableWidgetItem(key))
             self.params_table.setItem(i, 1, QTableWidgetItem(value))
 
-        # Load auth
         auth_type = request_data.get('auth_type', 'No Auth')
         self.auth_type.setCurrentText(auth_type)
         if auth_type == "Bearer Token":
@@ -665,10 +716,14 @@ class RequestTab(QWidget):
                     basic_password = ''
             self.basic_password.setText(basic_password or '')
 
-        # Load body
         body_type = request_data.get('body_type', 'None')
         self.body_type.setCurrentText(body_type)
         self.body_input.setPlainText(request_data.get('body', ''))
+        
+        if body_type == BODY_GRAPHQL:
+            self.graphql_query_input.setPlainText(request_data.get('graphql_query', ''))
+            self.graphql_variables_input.setPlainText(request_data.get('graphql_variables', ''))
+            self.update_body_ui(body_type)
 
     def substitute_variables(self):
         """Substitute environment variables in request data"""

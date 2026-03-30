@@ -15,6 +15,8 @@ from request_tab import RequestTab
 from environments_dialog import EnvironmentsDialog
 from comparison_dialog import ComparisonDialog
 from templates_dialog import TemplatesDialog
+from security_dialog import SecurityScannerDialog
+from data_generator_dialog import DataGeneratorDialog
 
 
 class MainWindow(QMainWindow):
@@ -27,7 +29,6 @@ class MainWindow(QMainWindow):
         self.load_data()
 
     def validate_collection_name(self, name: str) -> bool:
-        """Validate collection name for saving requests"""
         """Validate collection name"""
         if not name or not name.strip():
             QMessageBox.warning(self, "Invalid Name", "Collection name cannot be empty")
@@ -195,6 +196,16 @@ class MainWindow(QMainWindow):
         sign_request_action = tools_menu.addAction("Sign Request")
         sign_request_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
         sign_request_action.triggered.connect(self.sign_current_request)
+
+        tools_menu.addSeparator()
+
+        security_action = tools_menu.addAction("Security Scanner")
+        security_action.setShortcut(QKeySequence("Ctrl+Shift+E"))
+        security_action.triggered.connect(self.show_security_scanner)
+
+        data_gen_action = tools_menu.addAction("Data Generator")
+        data_gen_action.setShortcut(QKeySequence("Ctrl+Shift+D"))
+        data_gen_action.triggered.connect(self.show_data_generator)
 
         # Help menu
         help_menu = menubar.addMenu("Help")
@@ -386,6 +397,39 @@ class MainWindow(QMainWindow):
     def show_templates_dialog(self):
         """Show templates dialog"""
         dialog = TemplatesDialog(self.db_manager, self)
+        dialog.exec()
+
+    def show_security_scanner(self):
+        """Show security scanner dialog"""
+        current_tab = self.request_tabs.currentWidget()
+        url = ""
+        method = "GET"
+        headers = {}
+        body = None
+
+        if isinstance(current_tab, RequestTab):
+            url = current_tab.url_input.text()
+            method = current_tab.method_combo.currentText()
+            headers_str = current_tab.headers_editor.toPlainText()
+            try:
+                import json
+                headers = json.loads(headers_str) if headers_str else {}
+            except:
+                headers = {}
+            body_text = current_tab.body_editor.toPlainText()
+            if body_text:
+                try:
+                    body = json.loads(body_text)
+                except:
+                    body = body_text
+
+        dialog = SecurityScannerDialog(self, url=url, method=method,
+                                      headers=headers, body=body)
+        dialog.exec()
+
+    def show_data_generator(self):
+        """Show data generator dialog"""
+        dialog = DataGeneratorDialog(self)
         dialog.exec()
 
     def sign_current_request(self):

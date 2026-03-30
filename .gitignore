@@ -44,10 +44,9 @@ venv.bak/
 htmlcov/
 .tox/
 .hypothesis/
-.pytest_cache/
 test-results/
 
-# Database files (user data)
+# Database files (user data - DO NOT COMMIT)
 *.db
 *.db-journal
 .encryption_key
@@ -55,12 +54,26 @@ test-results/
 # Logs
 *.log
 logs/
+data/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Project specific
+# Project specific (user data)
 pypost.db
 pyman.db
-.encryption_key
+
+# Plugin config (user-specific)
+plugins/plugins.json
+
+# Distribution / packaging
+*.whl
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
